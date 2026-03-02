@@ -3204,9 +3204,21 @@ function isCacheWithinMonths(savedAt, months = 3) {
 }
 
 function getCategoryEntries(summary) {
-	if (Array.isArray(summary?.categories)) return summary.categories;
-	if (Array.isArray(summary?.topCategories)) return summary.topCategories;
-	return [];
+	const entries = Array.isArray(summary?.categories)
+		? summary.categories
+		: (Array.isArray(summary?.topCategories) ? summary.topCategories : []);
+
+	return entries.map((entry) => {
+		if (Array.isArray(entry)) {
+			return {
+				category: entry[0],
+				"total associated traits": entry[1],
+				"total associated pgs ids": entry[2] ?? 0,
+				"trait data": entry[3] ?? [],
+			};
+		}
+		return entry;
+	});
 }
 
 
@@ -3215,7 +3227,9 @@ function renderStats(summary) { //used in loadTraitStats()
 	if (!statsDiv) return;
 
 	const topCategory = getCategoryEntries(summary)[0];
-	const topCategoryLabel = topCategory ? `${topCategory[0]} (${formatNumber(topCategory[1])})` : "NR";
+	const topCategoryLabel = topCategory
+		? `${topCategory.category} (${formatNumber(topCategory["total associated traits"])})`
+		: "NR";
 
 	statsDiv.innerHTML = `
 		<div class="small text-muted">
@@ -3235,8 +3249,8 @@ function renderTraitPlot(summary) {//used in loadTraitStats()
 	if (!chartDiv) return;
 
 	const categoryEntries = getCategoryEntries(summary);
-	const categories = categoryEntries.map((t) => t[0]);
-	const counts = categoryEntries.map((t) => t[1]);
+	const categories = categoryEntries.map((entry) => entry.category);
+	const counts = categoryEntries.map((entry) => entry["total associated traits"]);
 	console.log("Category entries for plot:", summary,categoryEntries);
 	const data = [
 		{
@@ -3330,12 +3344,12 @@ function computeSummary(traits) {//used in loadTraitStats()
 
 	const categories = [...byCategory.entries()]
 		.sort((a, b) => b[1] - a[1])
-		.map(([categoryName, count]) => [
-			categoryName,
-			count,
-			pgsIdsByCategory.get(categoryName)?.size ?? 0,
-			traitDataByCategory.get(categoryName) ?? [],
-		]);
+		.map(([categoryName, count]) => ({
+			category: categoryName,
+			"total associated traits": count,
+			"total associated pgs ids": pgsIdsByCategory.get(categoryName)?.size ?? 0,
+			"trait data": traitDataByCategory.get(categoryName) ?? [],
+		}));
 		//.slice(0, 10);
 
 	const totalAssociatedPgsIdsPerCategory = Object.fromEntries(
