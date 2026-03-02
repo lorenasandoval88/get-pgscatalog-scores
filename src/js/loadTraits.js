@@ -78,18 +78,32 @@ function isCacheWithinMonths(savedAt, months = 3) {
 }
 
 function getCategoryEntries(summary) {
-	if (Array.isArray(summary?.categories)) return summary.categories;
-	if (Array.isArray(summary?.topCategories)) return summary.topCategories;
-	return [];
+	const entries = Array.isArray(summary?.categories)
+		? summary.categories
+		: (Array.isArray(summary?.topCategories) ? summary.topCategories : []);
+
+	return entries.map((entry) => {
+		if (Array.isArray(entry)) {
+			return {
+				category: entry[0],
+				"total associated traits": entry[1],
+				"total associated pgs ids": entry[2] ?? 0,
+				"trait data": entry[3] ?? [],
+			};
+		}
+		return entry;
+	});
 }
 
 
-function renderStats(summary) { //used in loadStats()
+function renderStats(summary) { //used in loadTraitStats()
 	const statsDiv = document.getElementById("traitDiv");
 	if (!statsDiv) return;
 
 	const topCategory = getCategoryEntries(summary)[0];
-	const topCategoryLabel = topCategory ? `${topCategory[0]} (${formatNumber(topCategory[1])})` : "NR";
+	const topCategoryLabel = topCategory
+		? `${topCategory.category} (${formatNumber(topCategory["total associated traits"])})`
+		: "NR";
 
 	statsDiv.innerHTML = `
 		<div class="small text-muted">
@@ -101,16 +115,17 @@ function renderStats(summary) { //used in loadStats()
 }
 
 
-function renderPlot(summary) {//used in loadStats()
+function renderTraitPlot(summary) {//used in loadTraitStats()
+	console.log("Rendering trait plot with summary:", summary);
 	if (typeof Plotly === "undefined") return;
 
 	const chartDiv = document.getElementById("traitChart");
 	if (!chartDiv) return;
 
 	const categoryEntries = getCategoryEntries(summary);
-	const categories = categoryEntries.map((t) => t[0]);
-	const counts = categoryEntries.map((t) => t[1]);
-
+	const categories = categoryEntries.map((entry) => entry.category);
+	const counts = categoryEntries.map((entry) => entry["total associated traits"]);
+	console.log("Category entries for plot:", summary,categoryEntries);
 	const data = [
 		{
 			type: "bar",
@@ -127,9 +142,13 @@ function renderPlot(summary) {//used in loadStats()
 			x: 0.5,
 			xanchor: "center",
 		},
-		margin: { l: 260, r: 20, t: 80, b: 80 },
+		margin: { l: 260, r: 20, t: 80, b: 90 },
 		xaxis: {
-			title: { text: "Score files count", standoff: 18 },
+			title: {
+				text: "Trait count",
+				standoff: 10,
+			},
+			side: "bottom",
 			automargin: true,
 		},
 		yaxis: { automargin: true },
@@ -138,27 +157,87 @@ function renderPlot(summary) {//used in loadStats()
 	Plotly.newPlot(chartDiv, data, layout, { responsive: true });
 }
 
-function computeSummary(traits) {//used in loadStats()
+
+// ---- main function to load trait stats, with caching ----
+
+function computeSummary(traits) {//used in loadTraitStats()
+	// console.log("147 Computing trait summary for traits:", traits);	
 	const byCategory = new Map();
+	const traitDataByCategory = new Map();
+	const pgsIdsByCategory = new Map();
+
+	const getAssociatedPgsIds = (trait) => {
+		if (!trait || typeof trait !== "object") return [];
+
+		if (Array.isArray(trait.associated_pgs_ids)) return trait.associated_pgs_ids;
+		if (Array.isArray(trait.pgs_ids)) return trait.pgs_ids;
+		if (Array.isArray(trait.associated_pgs)) {
+			return trait.associated_pgs
+				.map((item) => (typeof item === "string" ? item : item?.id ?? item?.pgs_id))
+				.filter(Boolean);
+		}
+		if (Array.isArray(trait.scores)) {
+			return trait.scores
+				.map((item) => (typeof item === "string" ? item : item?.id ?? item?.pgs_id))
+				.filter(Boolean);
+		}
+
+		return [];
+	};
 
 	for (const trait of traits) {
+		// console.log("Processing trait:", trait);
 		const categories = Array.isArray(trait?.trait_categories) && trait.trait_categories.length
 			? trait.trait_categories
 			: ["NR"];
+		const associatedPgsIds = getAssociatedPgsIds(trait);
 
 		for (const category of categories) {
+			// console.log(`Incrementing category count for: ${category}`);	
 			byCategory.set(category, (byCategory.get(category) ?? 0) + 1);
+			if (!traitDataByCategory.has(category)) {
+				traitDataByCategory.set(category, []);
+			}
+			if (!pgsIdsByCategory.has(category)) {
+				pgsIdsByCategory.set(category, new Set());
+			}
+			const categoryPgsSet = pgsIdsByCategory.get(category);
+			for (const pgsId of associatedPgsIds) {
+				categoryPgsSet.add(pgsId);
+			}
+			traitDataByCategory.get(category).push({
+				id: trait?.id ?? trait?.efo_id ?? null,
+				// label: trait?.label ?? trait?.trait_label ?? trait?.name ?? "NR",
+				// efo_id: trait?.efo_id ?? null,
+				data: trait, // include full trait data for potential drill-down use
+				// add other relevant fields as needed
+			});
+			// console.log(`Category "${category}" count is now: ${byCategory.get(category)}`);	
 		}
 	}
 
 	const categories = [...byCategory.entries()]
 		.sort((a, b) => b[1] - a[1])
+		.map(([categoryName, count]) => ({
+			category: categoryName,
+			"total associated traits": count,
+			"total associated pgs ids": pgsIdsByCategory.get(categoryName)?.size ?? 0,
+			"trait data": traitDataByCategory.get(categoryName) ?? [],
+		}));
 		//.slice(0, 10);
+
+	const totalAssociatedPgsIdsPerCategory = Object.fromEntries(
+		[...pgsIdsByCategory.entries()].map(([categoryName, pgsIdsSet]) => [
+			categoryName,
+			pgsIdsSet.size,
+		])
+	);
 
 	return {
         traits: traits,
 		totaltraits: traits.length,
 		totalCategories: byCategory.size,
+		totalAssociatedPgsIdsPerCategory,
 		categories,
 	};
 }
@@ -167,7 +246,8 @@ function computeSummary(traits) {//used in loadStats()
 //Plot trait statistics: check LocalForage first, use cache only when it was saved within the last 3 months, 
 // and otherwise fetch fresh data from PGS and re-cache it.
 
-async function loadStats() {
+export async function loadTraitStats() {
+	console.log("Loading trait stats...");
 	const sourceStatus = document.getElementById("traitSourceStatus");
 	const output = document.getElementById("traitOutput");
 	const cached = await getStoredTraitSummary();
@@ -177,14 +257,14 @@ async function loadStats() {
 
 		if (cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
 			renderStats(cached.summary);
-			renderPlot(cached.summary);
+			renderTraitPlot(cached.summary);
 			if (sourceStatus) sourceStatus.textContent = "Source: local cache (LocalForage, < 3 months)";
 			if (output) {
 				output.textContent = `Loaded ${formatNumber(cached.summary.totaltraits)} cached traits summary (${cached.savedAt}).`;
 			}
 			return;
 		}
-
+		console.log("*****Fetching traits from PGS Catalog API...");
 		const traits = await fetchAllTraits({ pageSize: 200 });
 		const summary = computeSummary(traits);
 		await saveTraitSummary(summary);
@@ -193,7 +273,7 @@ async function loadStats() {
         console.log("Fetched traits data:", traits);
         console.log("Summary:", summary);
 		renderStats(summary);
-		renderPlot(summary);
+		renderTraitPlot(summary);
 
 		if (output) {
 			output.textContent = `Loaded ${formatNumber(summary.totaltraits)} traits from PGS Catalog.`;
@@ -204,7 +284,7 @@ async function loadStats() {
 	} catch (error) {
 		if (cached?.summary) {
 			renderStats(cached.summary);
-			renderPlot(cached.summary);
+			renderTraitPlot(cached.summary);
 			if (sourceStatus) sourceStatus.textContent = "Source: local cache (LocalForage fallback)";
 			if (output) {
 				output.textContent = `Loaded ${formatNumber(cached.summary.totaltraits)} cached traits summary (${cached.savedAt}).`;
@@ -217,10 +297,3 @@ async function loadStats() {
 	}
 }
 
-
-
-window.loadStats = loadStats;
-
-document.addEventListener("DOMContentLoaded", () => {
-	loadStats();
-});

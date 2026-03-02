@@ -144,7 +144,7 @@ function renderStats(summary) {
 	`;
 }
 
-function renderPlot(summary) {
+function renderScorePlot(summary) {
 	if (typeof Plotly === "undefined") return;
 
 	const chartDiv = document.getElementById("scoreChart");
@@ -164,16 +164,27 @@ function renderPlot(summary) {
 	];
 
 	const layout = {
-		title: "Top 10 Reported Traits",
-		margin: { l: 260, r: 20, t: 40, b: 40 },
-		xaxis: { title: "Score count" },
+		title: {
+			text: "Top 10 Reported Traits",
+			x: 0.5,
+			xanchor: "center",
+		},
+		margin: { l: 260, r: 20, t: 90, b: 120 },
+		xaxis: {
+			title: {
+				text: "Scoring files count ",
+				standoff: 24,
+			},
+			side: "bottom",
+			automargin: true,
+		},
 		yaxis: { automargin: true },
 	};
 
 	Plotly.newPlot(chartDiv, data, layout, { responsive: true });
 }
 
-// ES6 MODULE: loadScores() is the main function to get scores data and summary, using cache if available and valid, and falling back to cache if fetch fails. loadStats() is the main function to render stats and plot, calling loadScores() to get data and summary, and updating source status and output messages accordingly.
+// ES6 MODULE: loadScores() is the main function to get scores data and summary, using cache if available and valid, and falling back to cache if fetch fails. loadScoreStats() is the main function to render stats and plot, calling loadScores() to get data and summary, and updating source status and output messages accordingly.
 // get scores data from cache if available and not too old, and return results;
 // if no cache or cache is too old, fetch from PGS REST API, compute summary, cache it.
 // if fetch fails but cache exists, use cache as fallback with notice. if no cache and fetch fails, show error.
@@ -226,7 +237,7 @@ export async function loadScores() {
 // console.log("Subset sample (first 20):", variantSubset30to70.slice(0, 20));
 
 
-async function loadStats() {
+export async function loadScoreStats() {
 	const sourceStatus = document.getElementById("scoreSourceStatus");
 	const output = document.getElementById("scoreOutput");
 	const cached = await getStoredScoreSummary();
@@ -245,7 +256,7 @@ async function loadStats() {
 
 		if (cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
 			renderStats(cached.summary);
-			renderPlot(cached.summary);
+			renderScorePlot(cached.summary);
 			if (sourceStatus) sourceStatus.textContent = "Source: local cache (LocalForage, < 3 months)";
 			if (output) {
 				output.textContent = `Loaded ${formatNumber(cached.summary.totalScores)} cached scores summary (${cached.savedAt}).`;
@@ -253,7 +264,7 @@ async function loadStats() {
 			return results;
 		}
 		renderStats(summary);
-		renderPlot(summary);
+		renderScorePlot(summary);
 
 		if (output) {
 			output.textContent = `Loaded ${formatNumber(summary.totalScores)} scores from PGS Catalog.`;
@@ -267,7 +278,7 @@ async function loadStats() {
 		};
 		if (cached?.summary) {
 			renderStats(cached.summary);
-			renderPlot(cached.summary);
+			renderScorePlot(cached.summary);
 			if (sourceStatus) sourceStatus.textContent = "Source: local cache (LocalForage fallback)";
 			if (output) {
 				output.textContent = `Loaded ${formatNumber(cached.summary.totalScores)} cached scores summary (${cached.savedAt}).`;
@@ -281,9 +292,4 @@ async function loadStats() {
 	}
 }
 
-window.loadStats = loadStats;
-
-document.addEventListener("DOMContentLoaded", () => {
-	loadStats();
-});
 
