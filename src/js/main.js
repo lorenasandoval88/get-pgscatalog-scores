@@ -1,5 +1,5 @@
-import { loadScoreStats } from "./loadScores.js";
-import { loadTraitStats } from "./loadTraits.js";
+import {getScoresPerTrait, loadMultipleScores, loadAllScores, loadScoreStats } from "./loadScores.js";
+import { fetchTraits, loadTraitStats } from "./loadTraits.js";
 
 export async function initStats() {
 	await Promise.allSettled([loadTraitStats(), loadScoreStats()]);
@@ -16,3 +16,10 @@ if (typeof document !== "undefined") {
 		initStats();
 	});
 }
+
+void (async () => {
+	console.log("fetchTraits", await fetchTraits());
+    console.log("loadAllScores", await loadAllScores());
+    console.log("getScoresPerTrait", await getScoresPerTrait());
+	console.log("loadMultipleScores", await loadMultipleScores(["PGS000010"]));
+})();
