@@ -21,5 +21,7 @@ void (async () => {
 	console.log("fetchTraits", await fetchTraits());
     console.log("loadAllScores", await loadAllScores());
     console.log("getScoresPerTrait", await getScoresPerTrait());
+    	console.log("loadMultipleScores", await loadOneScores(["PGS000010"]));
+
 	console.log("loadMultipleScores", await loadMultipleScores(["PGS000010"]));
 })();
