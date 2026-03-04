@@ -2885,28 +2885,36 @@ function isCacheWithinMonths$1(savedAt, months = 3) {
 	return savedDate >= cutoff;
 }
 
-// ---- core: fetch multiple scores by IDs ----
 
-async function fetchMultipleScores(ids = []) {
-  const results = [];
 
-  for (const id of ids) {
-    const url = `${PGS_BASE}/score/${id}`;
+// ---- core: fetch one or more scores by ID ----
 
-    const response = await fetch(url);
+async function fetchScores(ids = []) {
+	const inputIds = Array.isArray(ids) ? ids : [ids];
+	const normalizedIds = [...new Set(
+		inputIds
+			.map((id) => String(id ?? "").trim())
+			.filter(Boolean)
+	)];
+	const results = [];
 
-    if (!response.ok) {
-      console.warn(`Skipping ${id} (status ${response.status})`);
-      continue;
-    }
+	for (const id of normalizedIds) {
+		const url = `${PGS_BASE}/score/${id}`;
 
-    const data = await response.json();
-    results.push(data);
+		const response = await fetch(url);
 
-    await new Promise(r => setTimeout(r, 200)); // rate safety
-  }
+		if (!response.ok) {
+			console.warn(`Skipping ${id} (status ${response.status})`);
+			continue;
+		}
 
-  return results;
+		const data = await response.json();
+		results.push(data);
+
+		await new Promise((r) => setTimeout(r, 200)); // rate safety
+	}
+
+	return results;
 }
 // ---- core: fetch all scores (paginated) ---- total: 5298 as of 2024-06-20
   // REST docs indicate paginated responses; default is 50 per page. :contentReference[oaicite:4]{index=4}
@@ -3121,7 +3129,8 @@ function buildTopTraitsFromScoresPerTrait(scoresPerTraitPayload, maxTraits = 100
 		.slice(0, maxTraits);
 }
 
-// ES6 MODULE: loadAllScores() is the main function to get scores data and summary, using cache if available and valid, and falling back to cache if fetch fails. loadScoreStats() is the main function to render stats and plot, calling loadAllScores() to get data and summary, and updating source status and output messages accordingly.
+// ES6 MODULE: loadAllScores() is the main function to get scores data and summary, 
+// using cache if available and valid, and falling back to cache if fetch fails. loadScoreStats() is the main function to render stats and plot, calling loadAllScores() to get data and summary, and updating source status and output messages accordingly.
 // Higher-level app function
 // Checks LocalForage cache first (3-month validity)
 // If needed, calls fetchAllScores(), computes summary, caches result
@@ -3169,15 +3178,21 @@ async function loadAllScores() {
 
 // source scores from the cached pgs:all-score-summary dataset first 
 // (filtering .scores by requested IDs), and only fall back to network if needed. 
-async function loadMultipleScores(ids) {
-	console.log("loadMultipleScores():Loading scores function...");
+async function loadScores(ids, ...moreIds) {
+	console.log("loadScores():Loading scores function...");
 	const results = {
 		scores: [],
 		summary: null,
 	};
-	const requestedIds = [...new Set((ids ?? []).map((id) => String(id)))];
+	const rawIds = moreIds.length ? [ids, ...moreIds] : ids;
+	const inputIds = Array.isArray(rawIds) ? rawIds : [rawIds];
+	const requestedIds = [...new Set(
+		inputIds
+			.map((id) => String(id ?? "").trim())
+			.filter(Boolean)
+	)];
 	const allScoresCached = await getStoredScoreSummary(ALL_SCORE_SUMMARY_KEY);
-	console.log("loadMultipleScores():all-score cache present:", Boolean(allScoresCached?.scores?.length));
+	console.log("loadScores():all-score cache present:", Boolean(allScoresCached?.scores?.length));
 
 	try {
 		if (allScoresCached?.scores && isCacheWithinMonths$1(allScoresCached.savedAt, 3)) {
@@ -3197,8 +3212,8 @@ async function loadMultipleScores(ids) {
 			}
 
 			const missingIds = requestedIds.filter((id) => !scoreById.has(id));
-			console.warn("loadMultipleScores(): missing IDs in all-score cache, fetching:", missingIds);
-			const fetchedMissingScores = await fetchMultipleScores(missingIds);
+			console.warn("loadScores(): missing IDs in all-score cache, fetching:", missingIds);
+			const fetchedMissingScores = await fetchScores(missingIds);
 			const fetchedById = new Map(
 				fetchedMissingScores
 					.filter((score) => score?.id != null)
@@ -3212,7 +3227,7 @@ async function loadMultipleScores(ids) {
 			return results;
 		}
 
-		const scores = await fetchMultipleScores(requestedIds);
+		const scores = await fetchScores(requestedIds);
 		const summary = computeSummary$1(scores);
 		results.scores = scores;
 		results.summary = summary;
@@ -3327,7 +3342,7 @@ async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infinity } 
 
 	for (const [traitName, pgsIds] of traitEntries) {
 		if (processedTraits >= maxTraits) break;
-		const result = await loadMultipleScores(pgsIds);
+		const result = await loadScores(pgsIds);
 		scoresPerTrait[traitName] = {
 			pgs_ids: pgsIds,
 			scores: result.scores,
@@ -3798,12 +3813,14 @@ if (typeof document !== "undefined") {
 	});
 }
 
-void (async () => {
-	console.log("fetchTraits", await fetchTraits());
-    console.log("loadAllScores", await loadAllScores());
-    console.log("getScoresPerTrait", await getScoresPerTrait());
-	console.log("loadMultipleScores", await loadMultipleScores(["PGS000010"]));
-})();
+// void (async () => {
+// 	console.log("fetchTraits", await fetchTraits());
+//     console.log("loadAllScores", await loadAllScores());
+//     console.log("getScoresPerTrait", await getScoresPerTrait());
+//     	console.log("loadMultipleScores", await loadOneScores(["PGS000010"]));
+
+// 	console.log("loadMultipleScores", await loadMultipleScores(["PGS000010"]));
+// })();
 
 // load all traits (paginated) and log stats about them to console  
 const BASE = "https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/";
@@ -3952,5 +3969,5 @@ async function parseScore(id, txt) {
     return obj
 }
 
-export { fetchMultipleScores, fetchTraits, getTxts, loadAllScores, loadMultipleScores, loadScoreStats, localforage };
+export { fetchScores, fetchTraits, getTxts, loadAllScores, loadScoreStats, loadScores, localforage };
 //# sourceMappingURL=sdk.mjs.map
