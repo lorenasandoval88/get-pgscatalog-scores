@@ -309,10 +309,10 @@ export async function loadTraitStats() {
 
 
 export async function fetchTraits() {
-	console.log("Loading fetchTraits()...");
+	console.log("fetchTraits(), Loading fetchTraits()...");
 
 	const cached = await getStoredTraitSummary();
-	console.log("Cached trait summary:", cached);
+	console.log("fetchTraits(), Cached trait summary:", cached);
 
 	try {
 		if (cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
