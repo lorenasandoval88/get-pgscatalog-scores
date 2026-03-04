@@ -1,18 +1,29 @@
 # get-pgscatalog-polygenic-scores
-Retreives polygenic scores from the PGS Catalog..
 
-Live at: https://lorenasandoval88.github.io/get-pgscatalog-polygenic-scores/
+Retrieve **polygenic score metadata and summaries** from the **PGS Catalog REST API** directly in the browser.
 
-Try in the devconsole:
+This lightweight JavaScript SDK fetches PGS score information, caches it in browser storage, and provides simple functions to access the data.
 
-const sdk = await fetch("https://lorenasandoval88.github.io/get-pgscatalog-polygenic-scores/dist/sdk.mjs");
+---
 
+## Live Demo
+
+https://lorenasandoval88.github.io/get-pgscatalog-polygenic-scores/
+
+---
+
+## Quick Test (Dev Console)
+
+You can test the SDK directly in your browser console.
+
+```javascript
+const sdk = await import("https://lorenasandoval88.github.io/get-pgscatalog-polygenic-scores/dist/sdk.mjs");
 
 const data = await sdk.loadAllScores();
 
-What sdk.loadScores() does:
+console.log(data);
 
-Main function to get PGS Catalog meta data and summary, using browser storarge cache if available, otherwise fetching from the [PGS Catalog Rest API](https://www.pgscatalog.org/rest). 
 
-[<img width="953" height="926" alt="image" src="https://github.com/user-attachments/assets/04775d6a-7d42-4607-b6ad-1b8239752cca" />](https://lorenasandoval88.github.io/get-pgscatalog-polygenic-scores/)
+
+
 
