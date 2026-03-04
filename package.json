@@ -1,7 +1,7 @@
 {
   "name": "get-pgscatalog-scores",
   "version": "1.0.0",
-  "description": "Retreives polygenic scores from the PGS Catalog..",
+  "description": "Retrieves polygenic scores from the PGS Catalog.",
   "main": "./dist/sdk.mjs",
   "module": "./dist/sdk.mjs",
   "type": "module",
