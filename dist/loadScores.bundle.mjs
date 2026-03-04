@@ -3068,10 +3068,10 @@ function renderScorePlot(summary) {
 	const topTraits = Array.isArray(summary?.topTraits) ? summary.topTraits : [];
 	const traits = topTraits.map((t) => t[0]);
 	const counts = topTraits.map((t) => t[1]);
-	const traitVariantRange = summary?.traitVariantRange ?? {};
-	const customData = traits.map((trait) => {
-		const range = traitVariantRange?.[trait] ?? {};
-		return [range.min ?? "NR", range.max ?? "NR"];
+	const customData = topTraits.map((entry) => {
+		const min = entry?.[2] ?? "NR";
+		const max = entry?.[3] ?? "NR";
+		return [min, max];
 	});
 
 	const data = [
@@ -3107,6 +3107,21 @@ function renderScorePlot(summary) {
 	Plotly.newPlot(chartDiv, data, layout, { responsive: true });
 }
 
+function getVariantsRangeFromScores(scores = []) {
+	const variants = scores
+		.map((score) => Number(score?.variants_number))
+		.filter((value) => Number.isFinite(value));
+
+	if (!variants.length) {
+		return { min: "NR", max: "NR" };
+	}
+
+	return {
+		min: Math.min(...variants),
+		max: Math.max(...variants),
+	};
+}
+
 function buildTopTraitsFromScoresPerTrait(scoresPerTraitPayload, maxTraits = 100) {
 	const entries = Object.entries(scoresPerTraitPayload?.scoresPerTrait ?? {});
 	return entries
@@ -3114,7 +3129,8 @@ function buildTopTraitsFromScoresPerTrait(scoresPerTraitPayload, maxTraits = 100
 			const scoreCount = Array.isArray(traitValue?.scores)
 				? traitValue.scores.length
 				: (Array.isArray(traitValue?.pgs_ids) ? traitValue.pgs_ids.length : 0);
-			return [traitName, scoreCount];
+			const variantsRange = getVariantsRangeFromScores(traitValue?.scores ?? []);
+			return [traitName, scoreCount, variantsRange.min, variantsRange.max];
 		})
 		.sort((a, b) => b[1] - a[1])
 		.slice(0, maxTraits);

@@ -2958,7 +2958,7 @@ function renderStats(summary) { //used in loadTraitStats()
 
 
 function renderTraitPlot(summary) {//used in loadTraitStats()
-	console.log("Rendering trait plot with summary:", summary);
+	//console.log("Rendering trait plot with summary:", summary);
 	if (typeof Plotly === "undefined") return;
 
 	const chartDiv = document.getElementById("traitChart");
@@ -2967,7 +2967,7 @@ function renderTraitPlot(summary) {//used in loadTraitStats()
 	const categoryEntries = getCategoryEntries(summary);
 	const categories = categoryEntries.map((entry) => entry.category);
 	const counts = categoryEntries.map((entry) => entry["traits_count"]);
-	console.log("Category entries for plot:", summary,categoryEntries);
+	//console.log("Category entries for plot:", summary,categoryEntries);
 	const data = [
 		{
 			type: "bar",
