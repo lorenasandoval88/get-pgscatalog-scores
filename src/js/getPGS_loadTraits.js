@@ -146,7 +146,7 @@ function renderTraitPlot(summary) {//used in loadTraitStats()
 
 	const layout = {
 		title: {
-			text: "Reported Categories",
+			text: "Traits per Category",
 			x: 0.5,
 			xanchor: "center",
 		},
