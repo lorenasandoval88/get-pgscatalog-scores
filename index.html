@@ -93,8 +93,13 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
 
-     <!-- Bundle entry -->
-    <script type="module" src="./dist/sdk.mjs"></script>
+    <script type="module">
+        import { loadTraitStats, loadScoreStats } from "./dist/sdk.mjs";
+
+        window.addEventListener("DOMContentLoaded", () => {
+            Promise.allSettled([loadTraitStats(), loadScoreStats({ includeAllScoreStats: true, includeTraitStats: true, includeCategoryStats: true })]);
+        });
+    </script>
 
 </body>
 

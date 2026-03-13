@@ -672,6 +672,7 @@ export async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infi
 
 	for (const [traitName, pgsIds] of traitEntries) {
 		if (processedTraits >= maxTraits) break;
+		console.log(`Building getScoresPerTrait for trait ${traitName} with ${pgsIds.length} associated PGS IDs...`);
 		const result = await loadScores(pgsIds);
 		scoresPerTrait[traitName] = {
 			pgs_ids: pgsIds,
@@ -692,6 +693,9 @@ export async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infi
 	await localforage.setItem(SCORES_PER_TRAIT_SUMMARY_KEY, payload);
 	return payload;
 }
+
+//---------------START OF CATEGORY-SCORE LINKING LOGIC------------------
+
 
 export async function getScoresPerCategory({ forceRefresh = false, maxCategories = Infinity } = {}) {
 	/**
@@ -716,6 +720,7 @@ export async function getScoresPerCategory({ forceRefresh = false, maxCategories
 
 	for (const [categoryName, pgsIds] of categoryEntries) {
 		if (processedCategories >= maxCategories) break;
+		console.log(`Building getScoresPerCategory for category: "${categoryName}" with ${pgsIds.length} associated PGS IDs...`);
 		const result = await loadScores(pgsIds);
 		scoresPerCategory[categoryName] = {
 			pgs_ids: pgsIds,
@@ -737,70 +742,109 @@ export async function getScoresPerCategory({ forceRefresh = false, maxCategories
 	return payload;
 }
 
-//---------------END OF TRAIT-SCORE LINKING LOGIC------------------
+//---------------END OF CATEGORY-SCORE LINKING LOGIC------------------
 
 // Helper to build topTraits array for plotting, using scores-per-trait summary data which links traits to their specific scores and variants info, rather than relying on the more limited topTraits from the all-scores summary.
-export async function loadScoreStats() {
+export async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats = false, includeCategoryStats = false } = {}) {
 	/**
 	 * Render score statistics and charts for:
-	 * - top traits by scoring files
-	 * - scoring files per category
+	 * - optional overall score summary
+	 * - optional top traits by trait-linked scoring files
+	 * - optional scoring files per category
 	 * with cache-aware source/fallback messaging.
+	 * @param {{ includeAllScoreStats?: boolean, includeTraitStats?: boolean, includeCategoryStats?: boolean }} [options]
 	 * @returns {Promise<{scores: object[], summary: object|null}>}
 	 */
 	const traitSourceStatus = document.getElementById("scoreSourceStatusTrait");
 	const traitOutput = document.getElementById("scoreTraitOutput");
-	const traitCached = await getStoredScoreSummary(ALL_SCORE_SUMMARY_KEY);
+	const traitCached = includeAllScoreStats
+		? await getStoredScoreSummary(ALL_SCORE_SUMMARY_KEY)
+		: null;
 	let plotTopTraits = null;
 	let scoresPerCategoryPayload = null;
 	let plotTopCategories = null;
 
 	const categorySourceStatus = document.getElementById("scoreSourceStatusCategory");
 	const categoryOutput = document.getElementById("scoreCategoryOutput");
-	const categoryCached = await getStoredScoreSummary(SCORES_PER_CATEGORY_SUMMARY_KEY);
+	const categoryCached = includeCategoryStats
+		? await getStoredScoreSummary(SCORES_PER_CATEGORY_SUMMARY_KEY)
+		: null;
+	let results = { scores: [], summary: null };
 	
 	try {
-		if (traitSourceStatus) traitSourceStatus.textContent = "Source: loading PGS score metadata...";
-		if (categorySourceStatus) categorySourceStatus.textContent = "Source: loading linked category score metadata...";
-
-		const results = await loadAllScores();
-		const summary = results.summary;
-		try {
-			const scoresPerTrait = await getScoresPerTrait();
-			plotTopTraits = buildTopTraitsFromScoresPerTrait(scoresPerTrait, 50);
-		} catch (error) {
-			console.warn("loadScoreStats(): unable to build topTraits from getScoresPerTrait", error);
-		}
-		try {
-			scoresPerCategoryPayload = await getScoresPerCategory();
-			plotTopCategories = buildTopCategoriesFromScoresPerCategory(scoresPerCategoryPayload);
-		} catch (error) {
-			console.warn("loadScoreStats(): unable to build categories from getScoresPerCategory", error);
-			if (categoryCached?.scoresPerCategory) {
-				scoresPerCategoryPayload = categoryCached;
-				plotTopCategories = buildTopCategoriesFromScoresPerCategory(categoryCached);
+		if (traitSourceStatus) {
+			if (includeAllScoreStats) {
+				traitSourceStatus.textContent = includeTraitStats
+					? "Source: loading PGS score metadata..."
+					: "Source: loading PGS score metadata (trait-linked stats not requested)...";
+			} else if (includeTraitStats) {
+				traitSourceStatus.textContent = "Source: loading trait-linked score metadata...";
+			} else {
+				traitSourceStatus.textContent = "Source: not requested";
 			}
 		}
-		if (!summary) {
-			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
-			if (traitOutput) traitOutput.textContent = "Error loading stats: missing summary data.";
-			if (categorySourceStatus) categorySourceStatus.textContent = "Source: unavailable";
-			if (categoryOutput) categoryOutput.textContent = "Error loading category-linked stats: missing summary data.";
-			return { scores: [], summary: null };
+		if (includeCategoryStats && categorySourceStatus) {
+			categorySourceStatus.textContent = "Source: loading linked category score metadata...";
+		} else if (categorySourceStatus) {
+			categorySourceStatus.textContent = "Source: not requested";
+		}
+		if (!includeAllScoreStats && !includeTraitStats && traitOutput) {
+			traitOutput.textContent = "Score stats not loaded.";
+		}
+		if (!includeCategoryStats && categoryOutput) {
+			categoryOutput.textContent = "Category-linked score stats not loaded.";
 		}
 
-		if (traitCached?.summary && isCacheWithinMonths(traitCached.savedAt, 3)) {
+		if (includeAllScoreStats) {
+			results = await loadAllScores();
+		}
+		const summary = results.summary;
+		if (includeTraitStats) {
+			try {
+				const scoresPerTrait = await getScoresPerTrait();
+				plotTopTraits = buildTopTraitsFromScoresPerTrait(scoresPerTrait, 50);
+			} catch (error) {
+				console.warn("loadScoreStats(): unable to build topTraits from getScoresPerTrait", error);
+			}
+		}
+		if (includeCategoryStats) {
+			try {
+				scoresPerCategoryPayload = await getScoresPerCategory();
+				plotTopCategories = buildTopCategoriesFromScoresPerCategory(scoresPerCategoryPayload);
+			} catch (error) {
+				console.warn("loadScoreStats(): unable to build categories from getScoresPerCategory", error);
+				if (categoryCached?.scoresPerCategory) {
+					scoresPerCategoryPayload = categoryCached;
+					plotTopCategories = buildTopCategoriesFromScoresPerCategory(categoryCached);
+				}
+			}
+		}
+		if (includeAllScoreStats && !summary) {
+			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
+			if (traitOutput) traitOutput.textContent = "Error loading stats: missing summary data.";
+			if (includeCategoryStats && categorySourceStatus) categorySourceStatus.textContent = "Source: unavailable";
+			if (includeCategoryStats && categoryOutput) categoryOutput.textContent = "Error loading category-linked stats: missing summary data.";
+			return results;
+		}
+
+		if (includeAllScoreStats && traitCached?.summary && isCacheWithinMonths(traitCached.savedAt, 3)) {
 			const summaryForPlot = {
 				...traitCached.summary,
 				topTraits: plotTopTraits ?? traitCached.summary.topTraits,
 			};
 			renderStats(traitCached.summary);
 			renderScorePlot(summaryForPlot);
-			if (traitSourceStatus) traitSourceStatus.textContent = "Source: local cache (all-score-summary + scores-per-trait-summary, < 3 months)";
-			if (traitOutput) {
-				traitOutput.textContent = `Loaded ${formatNumber(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`;
+			if (traitSourceStatus) {
+				traitSourceStatus.textContent = includeTraitStats
+					? "Source: local cache (all-score-summary + scores-per-trait-summary, < 3 months)"
+					: "Source: local cache (all-score-summary, < 3 months)";
 			}
-		} else {
+			if (traitOutput) {
+				traitOutput.textContent = includeTraitStats
+					? `Loaded ${formatNumber(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`
+					: `Loaded ${formatNumber(traitCached.summary.totalScores)} cached scores summary (${traitCached.savedAt}).`;
+			}
+		} else if (includeAllScoreStats) {
 			const summaryForPlot = {
 				...summary,
 				topTraits: plotTopTraits ?? summary.topTraits,
@@ -809,12 +853,27 @@ export async function loadScoreStats() {
 			renderScorePlot(summaryForPlot);
 
 			if (traitOutput) {
-				traitOutput.textContent = `Loaded ${formatNumber(summary.totalScores)} scores from PGS Catalog and built trait-linked score cache.`;
+				traitOutput.textContent = includeTraitStats
+					? `Loaded ${formatNumber(summary.totalScores)} scores from PGS Catalog and built trait-linked score cache.`
+					: `Loaded ${formatNumber(summary.totalScores)} scores from PGS Catalog.`;
 			}
-			if (traitSourceStatus) traitSourceStatus.textContent = "Source: PGS Catalog REST API (live; refreshed all-score-summary + scores-per-trait-summary)";
+			if (traitSourceStatus) {
+				traitSourceStatus.textContent = includeTraitStats
+					? "Source: PGS Catalog REST API (live; refreshed all-score-summary + scores-per-trait-summary)"
+					: "Source: PGS Catalog REST API (live; refreshed all-score-summary)";
+			}
+		} else if (includeTraitStats && plotTopTraits?.length) {
+			renderScorePlot({ topTraits: plotTopTraits });
+			if (traitSourceStatus) traitSourceStatus.textContent = "Source: trait-linked score cache";
+			if (traitOutput) {
+				traitOutput.textContent = `Loaded ${formatNumber(plotTopTraits.length)} trait-linked scoring summaries.`;
+			}
+		} else if (includeTraitStats) {
+			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
+			if (traitOutput) traitOutput.textContent = "Error loading trait-linked stats: no trait data.";
 		}
 
-		if (plotTopCategories?.length) {
+		if (includeCategoryStats && plotTopCategories?.length) {
 			renderScorePerCategoryStats(plotTopCategories);
 			renderScorePerCategoryPlot(plotTopCategories);
 			if (categorySourceStatus) {
@@ -828,7 +887,7 @@ export async function loadScoreStats() {
 			if (categoryOutput) {
 				categoryOutput.textContent = `Loaded ${formatNumber(plotTopCategories.length)} category-linked scoring summaries.`;
 			}
-		} else {
+		} else if (includeCategoryStats) {
 			if (categorySourceStatus) categorySourceStatus.textContent = "Source: unavailable";
 			if (categoryOutput) categoryOutput.textContent = "Error loading category-linked stats: no category data.";
 		}
@@ -837,22 +896,31 @@ export async function loadScoreStats() {
 		
 	} catch (error) {
 		const results = {
-			scores: traitCached?.scores ?? [],
-			summary: traitCached?.summary ?? null,
+			scores: includeAllScoreStats ? traitCached?.scores ?? [] : [],
+			summary: includeAllScoreStats ? traitCached?.summary ?? null : null,
 		};
-		if (traitCached?.summary) {
+		if (includeAllScoreStats && traitCached?.summary) {
 			renderStats(traitCached.summary);
 			renderScorePlot(traitCached.summary);
-			if (traitSourceStatus) traitSourceStatus.textContent = "Source: local cache fallback (all-score-summary + scores-per-trait-summary)";
-			if (traitOutput) {
-				traitOutput.textContent = `Loaded ${formatNumber(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`;
+			if (traitSourceStatus) {
+				traitSourceStatus.textContent = includeTraitStats
+					? "Source: local cache fallback (all-score-summary + scores-per-trait-summary)"
+					: "Source: local cache fallback (all-score-summary)";
 			}
+			if (traitOutput) {
+				traitOutput.textContent = includeTraitStats
+					? `Loaded ${formatNumber(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`
+					: `Loaded ${formatNumber(traitCached.summary.totalScores)} cached scores summary (${traitCached.savedAt}).`;
+			}
+		} else if (includeTraitStats) {
+			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
+			if (traitOutput) traitOutput.textContent = `Error loading trait-linked stats: ${error.message}`;
 		} else {
 			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
 			if (traitOutput) traitOutput.textContent = `Error loading stats: ${error.message}`;
 		}
 
-		const fallbackCategoryPayload = categoryCached?.scoresPerCategory ? categoryCached : null;
+		const fallbackCategoryPayload = includeCategoryStats && categoryCached?.scoresPerCategory ? categoryCached : null;
 		if (fallbackCategoryPayload) {
 			const categoryTop = buildTopCategoriesFromScoresPerCategory(fallbackCategoryPayload);
 			renderScorePerCategoryStats(categoryTop);
@@ -861,7 +929,7 @@ export async function loadScoreStats() {
 			if (categoryOutput) {
 				categoryOutput.textContent = `Loaded ${formatNumber(categoryTop.length)} cached category-linked scoring summaries (${fallbackCategoryPayload.savedAt}).`;
 			}
-		} else {
+		} else if (includeCategoryStats) {
 			if (categorySourceStatus) categorySourceStatus.textContent = "Source: unavailable";
 			if (categoryOutput) categoryOutput.textContent = `Error loading category-linked stats: ${error.message}`;
 		}

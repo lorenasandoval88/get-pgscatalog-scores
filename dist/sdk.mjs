@@ -3527,6 +3527,9 @@ async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infinity } 
 	return payload;
 }
 
+//---------------START OF CATEGORY-SCORE LINKING LOGIC------------------
+
+
 async function getScoresPerCategory({ forceRefresh = false, maxCategories = Infinity } = {}) {
 	/**
 	 * Build and cache category -> scores mapping using trait-summary-linked PGS IDs.
@@ -3571,70 +3574,109 @@ async function getScoresPerCategory({ forceRefresh = false, maxCategories = Infi
 	return payload;
 }
 
-//---------------END OF TRAIT-SCORE LINKING LOGIC------------------
+//---------------END OF CATEGORY-SCORE LINKING LOGIC------------------
 
 // Helper to build topTraits array for plotting, using scores-per-trait summary data which links traits to their specific scores and variants info, rather than relying on the more limited topTraits from the all-scores summary.
-async function loadScoreStats() {
+async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats = false, includeCategoryStats = false } = {}) {
 	/**
 	 * Render score statistics and charts for:
-	 * - top traits by scoring files
-	 * - scoring files per category
+	 * - optional overall score summary
+	 * - optional top traits by trait-linked scoring files
+	 * - optional scoring files per category
 	 * with cache-aware source/fallback messaging.
+	 * @param {{ includeAllScoreStats?: boolean, includeTraitStats?: boolean, includeCategoryStats?: boolean }} [options]
 	 * @returns {Promise<{scores: object[], summary: object|null}>}
 	 */
 	const traitSourceStatus = document.getElementById("scoreSourceStatusTrait");
 	const traitOutput = document.getElementById("scoreTraitOutput");
-	const traitCached = await getStoredScoreSummary(ALL_SCORE_SUMMARY_KEY);
+	const traitCached = includeAllScoreStats
+		? await getStoredScoreSummary(ALL_SCORE_SUMMARY_KEY)
+		: null;
 	let plotTopTraits = null;
 	let scoresPerCategoryPayload = null;
 	let plotTopCategories = null;
 
 	const categorySourceStatus = document.getElementById("scoreSourceStatusCategory");
 	const categoryOutput = document.getElementById("scoreCategoryOutput");
-	const categoryCached = await getStoredScoreSummary(SCORES_PER_CATEGORY_SUMMARY_KEY);
+	const categoryCached = includeCategoryStats
+		? await getStoredScoreSummary(SCORES_PER_CATEGORY_SUMMARY_KEY)
+		: null;
+	let results = { scores: [], summary: null };
 	
 	try {
-		if (traitSourceStatus) traitSourceStatus.textContent = "Source: loading PGS score metadata...";
-		if (categorySourceStatus) categorySourceStatus.textContent = "Source: loading linked category score metadata...";
-
-		const results = await loadAllScores();
-		const summary = results.summary;
-		try {
-			const scoresPerTrait = await getScoresPerTrait();
-			plotTopTraits = buildTopTraitsFromScoresPerTrait(scoresPerTrait, 50);
-		} catch (error) {
-			console.warn("loadScoreStats(): unable to build topTraits from getScoresPerTrait", error);
-		}
-		try {
-			scoresPerCategoryPayload = await getScoresPerCategory();
-			plotTopCategories = buildTopCategoriesFromScoresPerCategory(scoresPerCategoryPayload);
-		} catch (error) {
-			console.warn("loadScoreStats(): unable to build categories from getScoresPerCategory", error);
-			if (categoryCached?.scoresPerCategory) {
-				scoresPerCategoryPayload = categoryCached;
-				plotTopCategories = buildTopCategoriesFromScoresPerCategory(categoryCached);
+		if (traitSourceStatus) {
+			if (includeAllScoreStats) {
+				traitSourceStatus.textContent = includeTraitStats
+					? "Source: loading PGS score metadata..."
+					: "Source: loading PGS score metadata (trait-linked stats not requested)...";
+			} else if (includeTraitStats) {
+				traitSourceStatus.textContent = "Source: loading trait-linked score metadata...";
+			} else {
+				traitSourceStatus.textContent = "Source: not requested";
 			}
 		}
-		if (!summary) {
-			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
-			if (traitOutput) traitOutput.textContent = "Error loading stats: missing summary data.";
-			if (categorySourceStatus) categorySourceStatus.textContent = "Source: unavailable";
-			if (categoryOutput) categoryOutput.textContent = "Error loading category-linked stats: missing summary data.";
-			return { scores: [], summary: null };
+		if (includeCategoryStats && categorySourceStatus) {
+			categorySourceStatus.textContent = "Source: loading linked category score metadata...";
+		} else if (categorySourceStatus) {
+			categorySourceStatus.textContent = "Source: not requested";
+		}
+		if (!includeAllScoreStats && !includeTraitStats && traitOutput) {
+			traitOutput.textContent = "Score stats not loaded.";
+		}
+		if (!includeCategoryStats && categoryOutput) {
+			categoryOutput.textContent = "Category-linked score stats not loaded.";
 		}
 
-		if (traitCached?.summary && isCacheWithinMonths$1(traitCached.savedAt, 3)) {
+		if (includeAllScoreStats) {
+			results = await loadAllScores();
+		}
+		const summary = results.summary;
+		if (includeTraitStats) {
+			try {
+				const scoresPerTrait = await getScoresPerTrait();
+				plotTopTraits = buildTopTraitsFromScoresPerTrait(scoresPerTrait, 50);
+			} catch (error) {
+				console.warn("loadScoreStats(): unable to build topTraits from getScoresPerTrait", error);
+			}
+		}
+		if (includeCategoryStats) {
+			try {
+				scoresPerCategoryPayload = await getScoresPerCategory();
+				plotTopCategories = buildTopCategoriesFromScoresPerCategory(scoresPerCategoryPayload);
+			} catch (error) {
+				console.warn("loadScoreStats(): unable to build categories from getScoresPerCategory", error);
+				if (categoryCached?.scoresPerCategory) {
+					scoresPerCategoryPayload = categoryCached;
+					plotTopCategories = buildTopCategoriesFromScoresPerCategory(categoryCached);
+				}
+			}
+		}
+		if (includeAllScoreStats && !summary) {
+			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
+			if (traitOutput) traitOutput.textContent = "Error loading stats: missing summary data.";
+			if (includeCategoryStats && categorySourceStatus) categorySourceStatus.textContent = "Source: unavailable";
+			if (includeCategoryStats && categoryOutput) categoryOutput.textContent = "Error loading category-linked stats: missing summary data.";
+			return results;
+		}
+
+		if (includeAllScoreStats && traitCached?.summary && isCacheWithinMonths$1(traitCached.savedAt, 3)) {
 			const summaryForPlot = {
 				...traitCached.summary,
 				topTraits: plotTopTraits ?? traitCached.summary.topTraits,
 			};
 			renderStats$1(traitCached.summary);
 			renderScorePlot(summaryForPlot);
-			if (traitSourceStatus) traitSourceStatus.textContent = "Source: local cache (all-score-summary + scores-per-trait-summary, < 3 months)";
-			if (traitOutput) {
-				traitOutput.textContent = `Loaded ${formatNumber$1(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`;
+			if (traitSourceStatus) {
+				traitSourceStatus.textContent = includeTraitStats
+					? "Source: local cache (all-score-summary + scores-per-trait-summary, < 3 months)"
+					: "Source: local cache (all-score-summary, < 3 months)";
 			}
-		} else {
+			if (traitOutput) {
+				traitOutput.textContent = includeTraitStats
+					? `Loaded ${formatNumber$1(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`
+					: `Loaded ${formatNumber$1(traitCached.summary.totalScores)} cached scores summary (${traitCached.savedAt}).`;
+			}
+		} else if (includeAllScoreStats) {
 			const summaryForPlot = {
 				...summary,
 				topTraits: plotTopTraits ?? summary.topTraits,
@@ -3643,12 +3685,27 @@ async function loadScoreStats() {
 			renderScorePlot(summaryForPlot);
 
 			if (traitOutput) {
-				traitOutput.textContent = `Loaded ${formatNumber$1(summary.totalScores)} scores from PGS Catalog and built trait-linked score cache.`;
+				traitOutput.textContent = includeTraitStats
+					? `Loaded ${formatNumber$1(summary.totalScores)} scores from PGS Catalog and built trait-linked score cache.`
+					: `Loaded ${formatNumber$1(summary.totalScores)} scores from PGS Catalog.`;
 			}
-			if (traitSourceStatus) traitSourceStatus.textContent = "Source: PGS Catalog REST API (live; refreshed all-score-summary + scores-per-trait-summary)";
+			if (traitSourceStatus) {
+				traitSourceStatus.textContent = includeTraitStats
+					? "Source: PGS Catalog REST API (live; refreshed all-score-summary + scores-per-trait-summary)"
+					: "Source: PGS Catalog REST API (live; refreshed all-score-summary)";
+			}
+		} else if (includeTraitStats && plotTopTraits?.length) {
+			renderScorePlot({ topTraits: plotTopTraits });
+			if (traitSourceStatus) traitSourceStatus.textContent = "Source: trait-linked score cache";
+			if (traitOutput) {
+				traitOutput.textContent = `Loaded ${formatNumber$1(plotTopTraits.length)} trait-linked scoring summaries.`;
+			}
+		} else if (includeTraitStats) {
+			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
+			if (traitOutput) traitOutput.textContent = "Error loading trait-linked stats: no trait data.";
 		}
 
-		if (plotTopCategories?.length) {
+		if (includeCategoryStats && plotTopCategories?.length) {
 			renderScorePerCategoryStats(plotTopCategories);
 			renderScorePerCategoryPlot(plotTopCategories);
 			if (categorySourceStatus) {
@@ -3662,7 +3719,7 @@ async function loadScoreStats() {
 			if (categoryOutput) {
 				categoryOutput.textContent = `Loaded ${formatNumber$1(plotTopCategories.length)} category-linked scoring summaries.`;
 			}
-		} else {
+		} else if (includeCategoryStats) {
 			if (categorySourceStatus) categorySourceStatus.textContent = "Source: unavailable";
 			if (categoryOutput) categoryOutput.textContent = "Error loading category-linked stats: no category data.";
 		}
@@ -3671,22 +3728,31 @@ async function loadScoreStats() {
 		
 	} catch (error) {
 		const results = {
-			scores: traitCached?.scores ?? [],
-			summary: traitCached?.summary ?? null,
+			scores: includeAllScoreStats ? traitCached?.scores ?? [] : [],
+			summary: includeAllScoreStats ? traitCached?.summary ?? null : null,
 		};
-		if (traitCached?.summary) {
+		if (includeAllScoreStats && traitCached?.summary) {
 			renderStats$1(traitCached.summary);
 			renderScorePlot(traitCached.summary);
-			if (traitSourceStatus) traitSourceStatus.textContent = "Source: local cache fallback (all-score-summary + scores-per-trait-summary)";
-			if (traitOutput) {
-				traitOutput.textContent = `Loaded ${formatNumber$1(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`;
+			if (traitSourceStatus) {
+				traitSourceStatus.textContent = includeTraitStats
+					? "Source: local cache fallback (all-score-summary + scores-per-trait-summary)"
+					: "Source: local cache fallback (all-score-summary)";
 			}
+			if (traitOutput) {
+				traitOutput.textContent = includeTraitStats
+					? `Loaded ${formatNumber$1(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`
+					: `Loaded ${formatNumber$1(traitCached.summary.totalScores)} cached scores summary (${traitCached.savedAt}).`;
+			}
+		} else if (includeTraitStats) {
+			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
+			if (traitOutput) traitOutput.textContent = `Error loading trait-linked stats: ${error.message}`;
 		} else {
 			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
 			if (traitOutput) traitOutput.textContent = `Error loading stats: ${error.message}`;
 		}
 
-		const fallbackCategoryPayload = categoryCached?.scoresPerCategory ? categoryCached : null;
+		const fallbackCategoryPayload = includeCategoryStats && categoryCached?.scoresPerCategory ? categoryCached : null;
 		if (fallbackCategoryPayload) {
 			const categoryTop = buildTopCategoriesFromScoresPerCategory(fallbackCategoryPayload);
 			renderScorePerCategoryStats(categoryTop);
@@ -3695,7 +3761,7 @@ async function loadScoreStats() {
 			if (categoryOutput) {
 				categoryOutput.textContent = `Loaded ${formatNumber$1(categoryTop.length)} cached category-linked scoring summaries (${fallbackCategoryPayload.savedAt}).`;
 			}
-		} else {
+		} else if (includeCategoryStats) {
 			if (categorySourceStatus) categorySourceStatus.textContent = "Source: unavailable";
 			if (categoryOutput) categoryOutput.textContent = `Error loading category-linked stats: ${error.message}`;
 		}
@@ -3706,7 +3772,154 @@ async function loadScoreStats() {
 }
 
 // load all traits (paginated) and log stats about them to console  
-const BASE$1 = "https://www.pgscatalog.org/rest";
+const BASE$1 = "https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/";
+const MAX_PGS_CACHE_BYTES = 300 * 1024 * 1024;
+const PGS_KEY_PREFIX = "pgs:id-";
+
+
+
+function getByteSize(value) {
+    const encoded = JSON.stringify(value) ?? "";
+    if (typeof TextEncoder !== "undefined") {
+        return new TextEncoder().encode(encoded).length;
+    }
+    return encoded.length * 2;
+}
+
+async function getTxts(ids) {
+    let data = await Promise.all(ids.map(async (id, i) => {
+        let score = await localforage.getItem(`${PGS_KEY_PREFIX}${id}`);
+        if (score == null) {
+            score = await parseScore(id, await fetchScore(id));
+            score.cachedAt = Date.now();
+            await localforage.setItem(`${PGS_KEY_PREFIX}${id}`, score);
+        }
+        return score
+    })
+    );
+    await limitStorage(ids);
+    return data
+}
+
+
+// evicts in this order:First: cached pgs:id-* entries whose IDs are not in current ids.
+// Then (only if still over limit): entries whose IDs are in current ids.
+async function limitStorage(ids = []){
+    const entries = [];
+    let totalBytes = 0;
+    const requestedIds = new Set((ids || []).map(id => String(id)));
+
+    await localforage.iterate((value, key) => {
+        if (!key.startsWith(PGS_KEY_PREFIX)) {
+            return;
+        }
+        const entryBytes = getByteSize({ key, value });
+        const createdAt = Number(value?.cachedAt) || 0;
+        const id = key.slice(PGS_KEY_PREFIX.length);
+
+        entries.push({ key, id, entryBytes, createdAt });
+        totalBytes += entryBytes;
+    });
+
+    if (totalBytes < MAX_PGS_CACHE_BYTES) {
+        return;
+    }
+
+    const notRequestedEntries = entries
+        .filter(entry => !requestedIds.has(entry.id))
+        .sort((a, b) => a.createdAt - b.createdAt);
+
+    const requestedEntries = entries
+        .filter(entry => requestedIds.has(entry.id))
+        .sort((a, b) => a.createdAt - b.createdAt);
+
+    const evictionOrder = [...notRequestedEntries, ...requestedEntries];
+
+    for (const entry of evictionOrder) {
+        if (totalBytes < MAX_PGS_CACHE_BYTES) {
+            break;
+        }
+        await localforage.removeItem(entry.key);
+        totalBytes -= entry.entryBytes;
+    }
+
+}
+
+async function fetchScore(id = 'PGS000050', build = 37, range) {
+    console.log("loadScore");
+    let txt = "";
+    const MAX_ROWS = 1000000;
+
+    // `${BASE}/PGS000004/ScoringFiles/Harmonized/PGS000004_hmPOS_GRCh37.txt.gz`
+    const url = `${BASE$1}${id}/ScoringFiles/${id}.txt.gz`; //
+    console.log("loadng unharmonized pgs score from url",url);
+
+    {
+        txt = pako.inflate(await (await fetch(url)).arrayBuffer(), {
+            to: 'string'
+        });
+    }
+
+    const rowCount = txt.split(/\r\n|\n|\r/g).length;
+    if (rowCount > MAX_ROWS) {
+        return "failed to fetch. File freater than 1M rows!"
+    }
+
+    // Check if PGS catalog FTP site is down-----------------------
+    let response;
+    response = await fetch(url); // testing url 'https://httpbin.org/status/429'
+    if (response?.ok) ; else {
+        txt = `:( Error loading PGS file. HTTP Response Code: ${response?.status}`;
+        document.getElementById('pgsTextArea').value = txt;
+    }
+    return txt
+}
+
+// create PGS obj and data --------------------------
+async function parseScore(id, txt) {
+    let obj = {
+        id: id
+    };
+    obj.txt = txt;
+    let rows = obj.txt.split(/[\r\n]/g);
+    let metaL = rows.filter(r => (r[0] == '#')).length;
+    obj.meta = {
+        txt: rows.slice(0, metaL)
+    };
+    obj.cols = rows[metaL].split(/\t/g);
+    obj.dt = rows.slice(metaL + 1).map(r => r.split(/\t/g));
+    if (obj.dt.slice(-1).length == 1) {
+        obj.dt.pop(-1);
+    }
+    // parse numerical types
+    const indInt = [obj.cols.indexOf('chr_position'), obj.cols.indexOf('hm_pos')];
+    const indFloat = [obj.cols.indexOf('effect_weight'), obj.cols.indexOf('allelefrequency_effect')];
+    const indBol = [obj.cols.indexOf('hm_match_chr'), obj.cols.indexOf('hm_match_pos')];
+
+    // /* this is the efficient way to do it, but for large files it has memory issues
+    obj.dt = obj.dt.map(r => {
+        // for each data row
+        indFloat.forEach(ind => {
+            r[ind] = parseFloat(r[ind]);
+        });
+        indInt.forEach(ind => {
+            r[ind] = parseInt(r[ind]);
+        });
+        indBol.forEach(ind => {
+            r[ind] = (r[11] == 'True') ? true : false;
+        });
+        return r
+    });
+    // parse metadata
+    obj.meta.txt.filter(r => (r[1] != '#')).forEach(aa => {
+        aa = aa.slice(1).split('=');
+        obj.meta[aa[0]] = aa[1];
+    });
+    return obj
+}
+
+// load all traits (paginated) and log stats about them to console  
+const BASE = "https://www.pgscatalog.org/rest";
 const TRAIT_SUMMARY_KEY = "pgs:trait-summary";
 
 // ---- small helpers ----
@@ -3717,7 +3930,7 @@ async function fetchAllTraits({ pageSize = 50, maxPages = Infinity } = {}) {
   const all = [];
 
   while (page < maxPages) {
-    const url = `${BASE$1}/trait/all?format=json&limit=${pageSize}&offset=${offset}`;
+    const url = `${BASE}/trait/all?format=json&limit=${pageSize}&offset=${offset}`;
     // console.log(`traits****Requesting: ${url}`);
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status} on ${url}`);
@@ -4058,177 +4271,5 @@ async function fetchTraits() {
 	}
 }
 
-async function initStats() {
-	await Promise.allSettled([loadTraitStats(), loadScoreStats()]);
-}
-
-if (typeof window !== "undefined") {
-	window.initStats = initStats;
-	window.loadScoreStats = loadScoreStats;
-	window.loadTraitStats = loadTraitStats;
-}
-
-if (typeof document !== "undefined") {
-	document.addEventListener("DOMContentLoaded", () => {
-		initStats();
-	});
-}
-
-// void (async () => {
-// 	console.log("fetchTraits", await fetchTraits());
-//     console.log("loadAllScores", await loadAllScores());
-//     console.log("getScoresPerTrait", await getScoresPerTrait());
-//     	console.log("loadMultipleScores", await loadOneScores(["PGS000010"]));
-
-// 	console.log("loadMultipleScores", await loadMultipleScores(["PGS000010"]));
-// })();
-
-// load all traits (paginated) and log stats about them to console  
-const BASE = "https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/";
-const MAX_PGS_CACHE_BYTES = 300 * 1024 * 1024;
-const PGS_KEY_PREFIX = "pgs:id-";
-
-
-
-function getByteSize(value) {
-    const encoded = JSON.stringify(value) ?? "";
-    if (typeof TextEncoder !== "undefined") {
-        return new TextEncoder().encode(encoded).length;
-    }
-    return encoded.length * 2;
-}
-
-async function getTxts(ids) {
-    let data = await Promise.all(ids.map(async (id, i) => {
-        let score = await localforage.getItem(`${PGS_KEY_PREFIX}${id}`);
-        if (score == null) {
-            score = await parseScore(id, await fetchScore(id));
-            score.cachedAt = Date.now();
-            await localforage.setItem(`${PGS_KEY_PREFIX}${id}`, score);
-        }
-        return score
-    })
-    );
-    await limitStorage(ids);
-    return data
-}
-
-
-// evicts in this order:First: cached pgs:id-* entries whose IDs are not in current ids.
-// Then (only if still over limit): entries whose IDs are in current ids.
-async function limitStorage(ids = []){
-    const entries = [];
-    let totalBytes = 0;
-    const requestedIds = new Set((ids || []).map(id => String(id)));
-
-    await localforage.iterate((value, key) => {
-        if (!key.startsWith(PGS_KEY_PREFIX)) {
-            return;
-        }
-        const entryBytes = getByteSize({ key, value });
-        const createdAt = Number(value?.cachedAt) || 0;
-        const id = key.slice(PGS_KEY_PREFIX.length);
-
-        entries.push({ key, id, entryBytes, createdAt });
-        totalBytes += entryBytes;
-    });
-
-    if (totalBytes < MAX_PGS_CACHE_BYTES) {
-        return;
-    }
-
-    const notRequestedEntries = entries
-        .filter(entry => !requestedIds.has(entry.id))
-        .sort((a, b) => a.createdAt - b.createdAt);
-
-    const requestedEntries = entries
-        .filter(entry => requestedIds.has(entry.id))
-        .sort((a, b) => a.createdAt - b.createdAt);
-
-    const evictionOrder = [...notRequestedEntries, ...requestedEntries];
-
-    for (const entry of evictionOrder) {
-        if (totalBytes < MAX_PGS_CACHE_BYTES) {
-            break;
-        }
-        await localforage.removeItem(entry.key);
-        totalBytes -= entry.entryBytes;
-    }
-
-}
-
-async function fetchScore(id = 'PGS000050', build = 37, range) {
-    console.log("loadScore");
-    let txt = "";
-    const MAX_ROWS = 1000000;
-
-    // `${BASE}/PGS000004/ScoringFiles/Harmonized/PGS000004_hmPOS_GRCh37.txt.gz`
-    const url = `${BASE}${id}/ScoringFiles/${id}.txt.gz`; //
-    console.log("loadng unharmonized pgs score from url",url);
-
-    {
-        txt = pako.inflate(await (await fetch(url)).arrayBuffer(), {
-            to: 'string'
-        });
-    }
-
-    const rowCount = txt.split(/\r\n|\n|\r/g).length;
-    if (rowCount > MAX_ROWS) {
-        return "failed to fetch. File freater than 1M rows!"
-    }
-
-    // Check if PGS catalog FTP site is down-----------------------
-    let response;
-    response = await fetch(url); // testing url 'https://httpbin.org/status/429'
-    if (response?.ok) ; else {
-        txt = `:( Error loading PGS file. HTTP Response Code: ${response?.status}`;
-        document.getElementById('pgsTextArea').value = txt;
-    }
-    return txt
-}
-
-// create PGS obj and data --------------------------
-async function parseScore(id, txt) {
-    let obj = {
-        id: id
-    };
-    obj.txt = txt;
-    let rows = obj.txt.split(/[\r\n]/g);
-    let metaL = rows.filter(r => (r[0] == '#')).length;
-    obj.meta = {
-        txt: rows.slice(0, metaL)
-    };
-    obj.cols = rows[metaL].split(/\t/g);
-    obj.dt = rows.slice(metaL + 1).map(r => r.split(/\t/g));
-    if (obj.dt.slice(-1).length == 1) {
-        obj.dt.pop(-1);
-    }
-    // parse numerical types
-    const indInt = [obj.cols.indexOf('chr_position'), obj.cols.indexOf('hm_pos')];
-    const indFloat = [obj.cols.indexOf('effect_weight'), obj.cols.indexOf('allelefrequency_effect')];
-    const indBol = [obj.cols.indexOf('hm_match_chr'), obj.cols.indexOf('hm_match_pos')];
-
-    // /* this is the efficient way to do it, but for large files it has memory issues
-    obj.dt = obj.dt.map(r => {
-        // for each data row
-        indFloat.forEach(ind => {
-            r[ind] = parseFloat(r[ind]);
-        });
-        indInt.forEach(ind => {
-            r[ind] = parseInt(r[ind]);
-        });
-        indBol.forEach(ind => {
-            r[ind] = (r[11] == 'True') ? true : false;
-        });
-        return r
-    });
-    // parse metadata
-    obj.meta.txt.filter(r => (r[1] != '#')).forEach(aa => {
-        aa = aa.slice(1).split('=');
-        obj.meta[aa[0]] = aa[1];
-    });
-    return obj
-}
-
-export { fetchScores, fetchTraits, getScoresPerCategory, getScoresPerTrait, getTxts, loadAllScores, loadScoreStats, loadScores, localforage };
+export { fetchScores, fetchTraits, getScoresPerCategory, getScoresPerTrait, getTxts, loadAllScores, loadScoreStats, loadScores, loadTraitStats, localforage };
 //# sourceMappingURL=sdk.mjs.map
