@@ -1,4 +1,5 @@
 import localforage from "localforage";
+import pako from "pako";
 console.log("get-pgscatalog-scores: getPGS_loadTxts.js loaded")
 
 // load all traits (paginated) and log stats about them to console  
