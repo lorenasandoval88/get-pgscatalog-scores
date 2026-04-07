@@ -3105,7 +3105,7 @@ async function loadTraitStats() {
 			if (output) {
 				output.textContent = `Loaded ${formatNumber$1(cached.summary.totaltraits)} cached traits summary (${cached.savedAt}).`;
 			}
-			return;
+			return cached.summary;
 		}
 		console.log("*****Fetching traits from PGS Catalog API...");
 		const traits = await fetchAllTraits({ pageSize: 200 });
@@ -3123,7 +3123,7 @@ async function loadTraitStats() {
 		}
 		if (sourceStatus) sourceStatus.textContent = "Source: PGS Catalog REST API (live)";
 
-        
+		return summary;
 	} catch (error) {
 		if (cached?.summary) {
 			renderStats$1(cached.summary);
@@ -3132,11 +3132,13 @@ async function loadTraitStats() {
 			if (output) {
 				output.textContent = `Loaded ${formatNumber$1(cached.summary.totaltraits)} cached traits summary (${cached.savedAt}).`;
 			}
+			return cached.summary;
 		} else {
 			if (sourceStatus) sourceStatus.textContent = "Source: unavailable";
 			if (output) output.textContent = `Error loading stats: ${error.message}`;
 		}
 		console.error(error);
+		return null;
 	}
 }
 
