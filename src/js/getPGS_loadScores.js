@@ -469,6 +469,7 @@ export async function loadAllScores() {
 		console.error(error);
 		return results;
 	}
+	console.log("loadAllScores():Final results:", results);
 }
 
 
@@ -945,4 +946,13 @@ export async function loadScoreStats({ includeAllScoreStats = false, includeTrai
 	}
 }
 
-
+// Expose for dev console
+if (typeof window !== "undefined") {
+	window.loadAllScores = loadAllScores;
+	window.loadScores = loadScores;
+	window.fetchScores = fetchScores;
+	window.fetchAllScores = fetchAllScores;
+	window.loadScoreStats = loadScoreStats;
+	window.getScoresPerTrait = getScoresPerTrait;
+	window.getScoresPerCategory = getScoresPerCategory;
+}

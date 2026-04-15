@@ -3663,6 +3663,7 @@ async function loadAllScores() {
 		console.error(error);
 		return results;
 	}
+	console.log("loadAllScores():Final results:", results);
 }
 
 
