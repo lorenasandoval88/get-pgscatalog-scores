@@ -4140,5 +4140,16 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 	}
 }
 
+// Expose for dev console
+if (typeof window !== "undefined") {
+	window.loadAllScores = loadAllScores;
+	window.loadScores = loadScores;
+	window.fetchScores = fetchScores;
+	window.fetchAllScores = fetchAllScores;
+	window.loadScoreStats = loadScoreStats;
+	window.getScoresPerTrait = getScoresPerTrait;
+	window.getScoresPerCategory = getScoresPerCategory;
+}
+
 export { buildTopCategoriesFromScoresPerCategory, fetchAllScores, fetchScores, getScoresPerCategory, getScoresPerTrait, loadAllScores, loadScoreStats, loadScores };
 //# sourceMappingURL=loadScores.bundle.mjs.map

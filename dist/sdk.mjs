@@ -4187,6 +4187,17 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 	}
 }
 
+// Expose for dev console
+if (typeof window !== "undefined") {
+	window.loadAllScores = loadAllScores;
+	window.loadScores = loadScores;
+	window.fetchScores = fetchScores;
+	window.fetchAllScores = fetchAllScores;
+	window.loadScoreStats = loadScoreStats;
+	window.getScoresPerTrait = getScoresPerTrait;
+	window.getScoresPerCategory = getScoresPerCategory;
+}
+
 /*! pako 2.1.0 https://github.com/nodeca/pako @license (MIT AND Zlib) */
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
 // (C) 2014-2017 Vitaly Puzrin and Andrey Tupitsin
