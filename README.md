@@ -66,8 +66,8 @@ Public exports from `sdk.js`:
 
 - `localforage`
 - `fetchAllScores`
-- `loadScores`
-- `fetchScores`
+- `fetchSomeScores`
+- `fetchSomeAPIScores`
 - `loadScoreStats`
 - `getTxts`
 - `fetchTraits`
